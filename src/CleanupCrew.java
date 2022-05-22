@@ -16,7 +16,7 @@ public class CleanupCrew implements Runnable {
 
     void cleanPlane() {
         while (plane.cleanlinessLevel < 100) {
-            plane.cleanlinessLevel = Math.min(plane.cleanlinessLevel + 5, 100);
+            plane.cleanlinessLevel = Math.min(plane.cleanlinessLevel + 3, 100);
             Logger.log(name, String.format("Cleaning up %s. %d%% cleaned.", plane.callSign, plane.cleanlinessLevel));
 
             try {

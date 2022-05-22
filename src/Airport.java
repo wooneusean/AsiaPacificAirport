@@ -12,10 +12,13 @@ public class Airport {
 
     AirTrafficControllerManager atcManager = new AirTrafficControllerManager(this);
 
+    CleanUpCrewManager ccManager = new CleanUpCrewManager();
+
     Airport(String name) {
         this.name = name;
         new Thread(refillTruck).start();
         new Thread(atcManager).start();
+        new Thread(ccManager).start();
     }
 
     public static void main(String[] args) {

@@ -16,7 +16,7 @@ public class Plane implements Runnable {
         this.airport = airport;
         this.numPassengers = ThreadLocalRandom.current().nextInt(5, 50);
         this.maxPassengers = this.numPassengers;
-        this.fuelLevel = ThreadLocalRandom.current().nextInt(25,75);
+        this.fuelLevel = ThreadLocalRandom.current().nextInt(25, 75);
         this.cleanlinessLevel = ThreadLocalRandom.current().nextInt(25, 75);
 
         StringBuilder sb = new StringBuilder();
@@ -32,7 +32,7 @@ public class Plane implements Runnable {
         for (int i = numPassengers; i >= 0; i--) {
             Logger.log(callSign, "DISEMBARKING passenger #" + (i + 1));
             try {
-                Thread.sleep(500);
+                Thread.sleep(200);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -43,7 +43,7 @@ public class Plane implements Runnable {
         for (int i = 0; i <= maxPassengers; i++) {
             Logger.log(callSign, "EMBARKING passenger #" + (i + 1));
             try {
-                Thread.sleep(500);
+                Thread.sleep(200);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -112,19 +112,19 @@ public class Plane implements Runnable {
 
         Logger.log(callSign, "Successfully DOCKED");
 
-        CleanupCrew cleanupCrew = new CleanupCrew(this);
-        Thread cleanupCrewThread = new Thread(cleanupCrew);
-        cleanupCrewThread.start();
+        airport.ccManager.cleanPlane(this);
         airport.refillTruck.refuelPlane(this);
 
         disembarkPassengers();
-
         embarkPassengers();
 
-        try {
-            cleanupCrewThread.join();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+        while (cleanlinessLevel < 100) {
+            Logger.log(callSign, "Plane not cleaned yet, waiting on CLEANING...");
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         while (fuelLevel < 100) {
@@ -160,7 +160,7 @@ public class Plane implements Runnable {
 
         airport.runway.lock();
 
-        Logger.log(callSign, "UNDOCKING from assigned gate...");
+        Logger.log(callSign, "Roger that, UNDOCKING from assigned gate...");
 
         try {
             Thread.sleep(2000);

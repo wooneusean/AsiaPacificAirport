@@ -31,7 +31,7 @@ public class RefillTruck implements Runnable {
 
             synchronized (plane) {
                 while (plane.fuelLevel < 100) {
-                    plane.fuelLevel = Math.min(plane.fuelLevel + 5, 100);
+                    plane.fuelLevel = Math.min(plane.fuelLevel + 3, 100);
 
                     Logger.log(name, String.format("REFUELLING %s. %d%% full.", plane.callSign, plane.fuelLevel));
 
