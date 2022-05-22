@@ -1,25 +1,22 @@
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Plane implements Runnable {
+    final AtomicBoolean clearToLand = new AtomicBoolean(false);
+    final AtomicBoolean clearToDepart = new AtomicBoolean(false);
+    final AtomicBoolean isArriving = new AtomicBoolean(true);
     Airport airport;
-
     int maxPassengers;
-
     int numPassengers;
-
     int fuelLevel;
-
     int cleanlinessLevel;
-
     String callSign;
-
-    Boolean clearToLand = false;
 
     Plane(Airport airport) {
         this.airport = airport;
-        this.numPassengers = ThreadLocalRandom.current().nextInt(5, 10/*50*/);
+        this.numPassengers = ThreadLocalRandom.current().nextInt(5, 50);
         this.maxPassengers = this.numPassengers;
-        this.fuelLevel = ThreadLocalRandom.current().nextInt(25, 75);
+        this.fuelLevel = ThreadLocalRandom.current().nextInt(25,75);
         this.cleanlinessLevel = ThreadLocalRandom.current().nextInt(25, 75);
 
         StringBuilder sb = new StringBuilder();
@@ -29,13 +26,11 @@ public class Plane implements Runnable {
                      .append("-")
                      .append(ThreadLocalRandom.current().nextInt(100, 999))
                      .toString();
-
-        this.airport.queueUp(this);
     }
 
     void disembarkPassengers() {
-        for (int i = numPassengers; i > 1; i--) {
-            Logger.log(callSign, "DISEMBARKING passenger #" + i);
+        for (int i = numPassengers; i >= 0; i--) {
+            Logger.log(callSign, "DISEMBARKING passenger #" + (i + 1));
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
@@ -45,8 +40,8 @@ public class Plane implements Runnable {
     }
 
     void embarkPassengers() {
-        for (int i = 1; i < maxPassengers; i++) {
-            Logger.log(callSign, "EMBARKING passenger #" + i);
+        for (int i = 0; i <= maxPassengers; i++) {
+            Logger.log(callSign, "EMBARKING passenger #" + (i + 1));
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
@@ -57,80 +52,57 @@ public class Plane implements Runnable {
 
     @Override
     public void run() {
-        synchronized (airport.waitingList) {
-            while (airport.waitingList.peek() != this) {
+        Logger.log(callSign, "Queued up and requesting for landing!");
+
+        airport.atcManager.requestLanding(this);
+
+        long landingWaitingTimeStart = System.currentTimeMillis();
+
+        synchronized (clearToLand) {
+            while (!clearToLand.get()) {
+                Logger.log(callSign, "Waiting for clearance to LAND.");
                 try {
-                    airport.waitingList.wait();
+                    clearToLand.wait();
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
 
-        Logger.log("ATC", "Looking for available GATES for " + callSign);
-
-        synchronized (airport.gates) {
-            while (airport.gates.availablePermits() == 0) {
-                try {
-                    airport.gates.wait();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
+        try {
+            airport.runway.lock();
+            airport.gates.acquire(1);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
-        Logger.log("ATC", "Found GATE for " + callSign);
-
-        Logger.log("ATC", "Making sure RUNWAY is clear for " + callSign);
-
-        synchronized (airport.runway) {
-            while (airport.runway.isLocked()) {
-                try {
-                    airport.runway.wait();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
-
-        Logger.log("ATC", String.format("RUNWAY is clear, %s is granted to land.", callSign));
+        long landingWaitingTime = System.currentTimeMillis() - landingWaitingTimeStart;
 
         Logger.log(callSign, "Roger that, proceeding to LAND.");
-        airport.runway.lock();
+
         Logger.log(callSign, "Touching down...");
         try {
             Thread.sleep(4000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        int assignedGate = airport.gates.availablePermits();
-        Logger.log(callSign, "Touch down! Safely LANDED.");
 
-        try {
-            airport.gates.acquire(1);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        Logger.log(callSign, "Touch down! Safely LANDED.");
 
         synchronized (airport.runway) {
             airport.runway.unlock();
             airport.runway.notifyAll();
         }
 
-        synchronized (airport.waitingList) {
-            airport.waitingList.poll();
-            airport.waitingList.notifyAll();
-        }
-
-        Logger.log(callSign, "TAXIING to gate #" + assignedGate + "...");
+        Logger.log(callSign, "TAXIING to assigned gate..");
         try {
             Thread.sleep(3000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        Logger.log(callSign, "TAXIED to gate #" + assignedGate);
+        Logger.log(callSign, "TAXIED to assigned gate");
 
-        Logger.log(callSign, "Starting the DOCKING process at gate #" + assignedGate);
+        Logger.log(callSign, "DOCKING to assigned gate...");
 
         try {
             Thread.sleep(2000);
@@ -138,7 +110,7 @@ public class Plane implements Runnable {
             throw new RuntimeException(e);
         }
 
-        Logger.log(callSign, "DOCKED to gate #" + assignedGate);
+        Logger.log(callSign, "Successfully DOCKED");
 
         CleanupCrew cleanupCrew = new CleanupCrew(this);
         Thread cleanupCrewThread = new Thread(cleanupCrew);
@@ -146,6 +118,7 @@ public class Plane implements Runnable {
         airport.refillTruck.refuelPlane(this);
 
         disembarkPassengers();
+
         embarkPassengers();
 
         try {
@@ -154,43 +127,47 @@ public class Plane implements Runnable {
             throw new RuntimeException(e);
         }
 
-        synchronized (this) {
-            while (fuelLevel != 100) {
-                Logger.log(callSign, "Waiting on REFUELLING...");
+        while (fuelLevel < 100) {
+            Logger.log(callSign, "Plane not refueled yet, waiting on REFUELLING...");
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        Logger.log(callSign, "All green across the board, ready to depart.");
+
+        Logger.log(callSign, "Requesting for clearance to DEPART.");
+
+        isArriving.set(false);
+
+        airport.atcManager.planeDeparture(this);
+
+        long takeOffWaitingTimeStart = System.currentTimeMillis();
+
+        synchronized (clearToDepart) {
+            while (!clearToDepart.get()) {
                 try {
-                    this.wait();
+                    clearToDepart.wait();
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
 
-        Logger.log(callSign, "Requesting for DEPARTURE.");
+        long takeOffWaitingTime = System.currentTimeMillis() - takeOffWaitingTimeStart;
 
-        synchronized (airport.runway) {
-            while (airport.runway.isLocked()) {
-                Logger.log("ATC", "RUNWAY is occupied, please wait.");
-                try {
-                    airport.runway.wait();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
+        airport.runway.lock();
 
-        Logger.log("ATC", "RUNWAY is free, proceed to depart " + callSign);
-
-
-        Logger.log(callSign, "UNDOCKING from gate #" + assignedGate);
+        Logger.log(callSign, "UNDOCKING from assigned gate...");
 
         try {
             Thread.sleep(2000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        Logger.log(callSign, "Done UNDOCKING from gate #" + assignedGate);
-
-        airport.runway.lock();
+        Logger.log(callSign, "Done UNDOCKING from assigned gate");
 
         Logger.log(callSign, "TAXIING to runway...");
         try {
@@ -202,19 +179,24 @@ public class Plane implements Runnable {
 
         Logger.log(callSign, "Taking off!");
         try {
-            Thread.sleep(1000);
+            Thread.sleep(4000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        Logger.log(callSign, "Took off, bye bye, " + airport.name);
+        Logger.log(callSign, "Took off. Bye bye, " + airport.name);
 
         synchronized (airport.runway) {
             airport.runway.unlock();
             airport.runway.notifyAll();
         }
+
         synchronized (airport.gates) {
             airport.gates.release(1);
             airport.gates.notifyAll();
         }
+
+        ServiceStatistics stats = new ServiceStatistics(landingWaitingTime, takeOffWaitingTime, maxPassengers, this);
+        airport.atcManager.statistics.add(stats);
+        ServiceStatistics.planesHandled++;
     }
 }

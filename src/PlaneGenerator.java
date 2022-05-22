@@ -17,7 +17,7 @@ public class PlaneGenerator implements Runnable {
             planeThread.start();
 
             try {
-                Thread.sleep(ThreadLocalRandom.current().nextInt(1000, 3000));
+                Thread.sleep(ThreadLocalRandom.current().nextInt(0, 3000));
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }

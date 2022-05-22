@@ -9,12 +9,12 @@ public class RefillTruck implements Runnable {
     Plane plane;
 
     public RefillTruck(String name) {
-        Logger.log(name, "Reporting for duty.");
         this.name = name;
     }
 
     @Override
     public void run() {
+        Logger.log(name, "Reporting for duty.");
         while (true) {
             synchronized (waitingList) {
                 while (waitingList.size() == 0) {
@@ -35,13 +35,13 @@ public class RefillTruck implements Runnable {
 
                     Logger.log(name, String.format("REFUELLING %s. %d%% full.", plane.callSign, plane.fuelLevel));
 
+                    plane.notifyAll();
                     try {
                         Thread.sleep(500);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 }
-                plane.notifyAll();
             }
         }
     }
